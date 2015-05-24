@@ -315,6 +315,9 @@ static av_always_inline void hcscale(SwsContext *c, int16_t *dst1,
     if (DEBUG_SWSCALE_BUFFERS)                  \
         av_log(c, AV_LOG_DEBUG, __VA_ARGS__)
 
+
+#include "slice.c"
+
 static int swscale(SwsContext *c, const uint8_t *src[],
                    int srcStride[], int srcSliceY,
                    int srcSliceH, uint8_t *dst[], int dstStride[])
@@ -370,6 +373,12 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     int lastInLumBuf = c->lastInLumBuf;
     int lastInChrBuf = c->lastInChrBuf;
     int perform_gamma = c->is_internal_gamma;
+
+    int numDesc = c->numDesc;
+    SwsSlice *src_slice = &c->slice[0];
+    SwsSlice *dst_slice = &c->slice[numDesc];
+    SwsFilterDescriptor *desc = c->desc;
+    int16_t **line_pool[4];
 
 
     if (!usePal(c->srcFormat)) {
@@ -439,6 +448,7 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     }
     lastDstY = dstY;
 
+
     for (; dstY < dstH; dstY++) {
         const int chrDstY = dstY >> c->chrDstVSubSample;
         uint8_t *dest[4]  = {
@@ -486,6 +496,19 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                           lastLumSrcY, lastChrSrcY);
         }
 
+#define NEW_FILTER 1
+        
+
+#if NEW_FILTER
+        line_pool[0] = &lumPixBuf[lumBufIndex + 1];
+        line_pool[1] = &chrUPixBuf[chrBufIndex + 1];
+        line_pool[2] = &chrVPixBuf[chrBufIndex + 1];
+        line_pool[3] = alpPixBuf ? &alpPixBuf[lumBufIndex + 1] : NULL;
+
+        ff_init_slice_from_src(src_slice, (uint8_t**)src, srcStride, c->srcW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf, 0);
+        ff_init_slice_from_lp(dst_slice, (uint8_t ***)line_pool, dstW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf);
+
+#endif
         // Do horizontal scaling
         while (lastInLumBuf < lastLumSrcY) {
             const uint8_t *src1[4] = {
@@ -494,6 +517,7 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 src[2] + (lastInLumBuf + 1 - srcSliceY) * srcStride[2],
                 src[3] + (lastInLumBuf + 1 - srcSliceY) * srcStride[3],
             };
+            int i;
             lumBufIndex++;
             av_assert0(lumBufIndex < 2 * vLumBufSize);
             av_assert0(lastInLumBuf + 1 - srcSliceY < srcSliceH);
@@ -501,7 +525,10 @@ static int swscale(SwsContext *c, const uint8_t *src[],
 
             if (perform_gamma)
                 gamma_convert((uint8_t **)src1, srcW, c->inv_gamma);
-
+#if NEW_FILTER
+            for (i = 0; i < numDesc; ++i)
+                desc[i].process(c, &desc[i], lastInLumBuf + 1, 1);
+#else
             hyscale(c, lumPixBuf[lumBufIndex], dstW, src1, srcW, lumXInc,
                     hLumFilter, hLumFilterPos, hLumFilterSize,
                     formatConvBuffer, pal, 0);
@@ -509,6 +536,7 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 hyscale(c, alpPixBuf[lumBufIndex], dstW, src1, srcW,
                         lumXInc, hLumFilter, hLumFilterPos, hLumFilterSize,
                         formatConvBuffer, pal, 1);
+#endif
             lastInLumBuf++;
             DEBUG_BUFFERS("\t\tlumBufIndex %d: lastInLumBuf: %d\n",
                           lumBufIndex, lastInLumBuf);
@@ -762,6 +790,8 @@ SwsFunc ff_getSwsFunc(SwsContext *c)
         ff_sws_init_swscale_ppc(c);
     if (ARCH_X86)
         ff_sws_init_swscale_x86(c);
+
+    ff_init_filters(c);
 
     return swscale;
 }
@@ -1151,4 +1181,3 @@ int attribute_align_arg sws_scale(struct SwsContext *c,
     av_free(rgb0_tmp);
     return ret;
 }
-

@@ -276,6 +276,9 @@ typedef void (*yuv2anyX_fn)(struct SwsContext *c, const int16_t *lumFilter,
                             const int16_t **alpSrc, uint8_t **dest,
                             int dstW, int y);
 
+struct SwsSlice;
+struct SwsFilterDescriptor;
+
 /* This struct should be aligned on at least a 32-byte boundary. */
 typedef struct SwsContext {
     /**
@@ -325,6 +328,10 @@ typedef struct SwsContext {
     int is_internal_gamma;
     uint16_t *gamma;
     uint16_t *inv_gamma;
+
+    int numDesc;
+    struct SwsSlice *slice;
+    struct SwsFilterDescriptor *desc;
 
     uint32_t pal_yuv[256];
     uint32_t pal_rgb[256];
@@ -933,5 +940,39 @@ static inline void fillPlane16(uint8_t *plane, int stride, int width, int height
         ptr += stride;
     }
 }
+
+
+typedef struct SwsPlane
+{
+    int available_lines;
+    int sliceY;
+    int sliceH;
+    uint8_t **line;
+} SwsPlane;
+
+typedef struct SwsSlice 
+{
+    int width;
+    int h_chr_sub_sample;
+    int v_chr_sub_sample;
+    enum AVPixelFormat fmt;
+    SwsPlane plane[4];
+} SwsSlice;
+
+typedef struct SwsFilterDescriptor
+{
+    SwsSlice * src;
+    SwsSlice * dst;
+
+    uint16_t * filter;
+    int * filter_pos;
+    int filter_size;
+
+    int alpha;
+    int xInc;
+    uint32_t * pal;
+
+   int (*process)(SwsContext*, struct SwsFilterDescriptor*, int, int);
+} SwsFilterDescriptor;
 
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */

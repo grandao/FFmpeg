@@ -2145,6 +2145,8 @@ void sws_freeFilter(SwsFilter *filter)
     av_free(filter);
 }
 
+extern int ff_free_filters(SwsContext *s);
+
 void sws_freeContext(SwsContext *c)
 {
     int i;
@@ -2219,6 +2221,7 @@ void sws_freeContext(SwsContext *c)
     av_freep(&c->gamma);
     av_freep(&c->inv_gamma);
 
+    ff_free_filters(c);
 
     av_free(c);
 }
