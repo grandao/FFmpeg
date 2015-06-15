@@ -941,6 +941,7 @@ static inline void fillPlane16(uint8_t *plane, int stride, int width, int height
     }
 }
 
+#define MAX_SLICE_PLANES 4
 
 typedef struct SwsPlane
 {
@@ -956,7 +957,7 @@ typedef struct SwsSlice
     int h_chr_sub_sample;
     int v_chr_sub_sample;
     enum AVPixelFormat fmt;
-    SwsPlane plane[4];
+    SwsPlane plane[MAX_SLICE_PLANES];
 } SwsSlice;
 
 typedef struct SwsFilterDescriptor
@@ -974,5 +975,10 @@ typedef struct SwsFilterDescriptor
 
    int (*process)(SwsContext*, struct SwsFilterDescriptor*, int, int);
 } SwsFilterDescriptor;
+
+int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int sliceY, int sliceH, int skip);
+int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int sliceY, int sliceH);
+int ff_init_filters(SwsContext *c);
+int ff_free_filters(SwsContext *c);
 
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */

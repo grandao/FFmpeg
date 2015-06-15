@@ -316,7 +316,6 @@ static av_always_inline void hcscale(SwsContext *c, int16_t *dst1,
         av_log(c, AV_LOG_DEBUG, __VA_ARGS__)
 
 
-#include "slice.c"
 
 static int swscale(SwsContext *c, const uint8_t *src[],
                    int srcStride[], int srcSliceY,

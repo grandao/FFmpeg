@@ -1,25 +1,5 @@
 #include "swscale_internal.h"
 
-/*
-int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lines, int v_sub_sample, int h_sub_sample);
-void free_slice(SwsSlice *s);
-int init_slice_1(SwsSlice *s, uint8_t *v, uint8_t *v2, int dstW, int sliceY, int sliceH);
-int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH);
-int lum_convert(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH);
-*/
-
-
-int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int sliceY, int sliceH, int skip);
-int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int sliceY, int sliceH);
-
-/*
-int ff_init_desc_fmt_convert(SwsFilterDescriptor *desc, SwsSlice * src, SwsSlice *dst, uint32_t *pal);
-int ff_init_desc_hscale(SwsFilterDescriptor *desc, SwsSlice *src, SwsSlice *dst, uint16_t *filter, int * filter_pos, int filter_size, int xInc);
-*/
-
-int ff_init_filters(SwsContext *c);
-int ff_free_filters(SwsContext *c);
-
 
 static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lines, int v_sub_sample, int h_sub_sample)
 {
@@ -38,7 +18,7 @@ static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lines, int v_su
 
     for (i = 0; i < 4; ++i)
     {
-        s->plane[i].line = av_malloc(sizeof(uint8_t*) * size[i]);
+        s->plane[i].line = av_malloc_array(sizeof(uint8_t*), size[i]);
         if (!s->plane[i].line) 
         {
             err = AVERROR(ENOMEM);
@@ -52,7 +32,7 @@ static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lines, int v_su
     if (err)
     {
         for (--i; i >= 0; --i)
-            av_free(s->plane[i].line);
+            av_freep(&s->plane[i].line);
         return err;
     }
     return 1;
@@ -62,32 +42,37 @@ static void free_slice(SwsSlice *s)
 {
     int i;
     for (i = 0; i < 4; ++i)
-        av_free(s->plane[i].line);
+        av_freep(&s->plane[i].line);
 }
 
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int sliceY, int sliceH, int skip)
 {
     int i = 0;
 
-    int start[4] = {sliceY,
+    const int start[4] = {sliceY,
                     sliceY >> s->v_chr_sub_sample,
                     sliceY >> s->v_chr_sub_sample,
                     sliceY};
 
-    int stride1[4] = {stride[0],
+    const int stride1[4] = {stride[0],
                     stride[1] << skip,
                     stride[2] << skip,
                     stride[3]};
+
+    const int height[4] = {sliceH,
+                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
+                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
+                    sliceH};
 
     s->width = srcW;
 
     for (i = 0; i < 4; ++i)
     {
         int j;
-        int lines = FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample);
+        int lines = height[i];
         lines = s->plane[i].available_lines < lines ? s->plane[i].available_lines : lines;
 
-        s->plane[i].sliceY = sliceY;
+        s->plane[i].sliceY = start[i];
         s->plane[i].sliceH = lines;
 
         for (j = 0; j < lines; j+= 1 << skip)
@@ -101,14 +86,22 @@ int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int src
 int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int sliceY, int sliceH)
 {
     int i;
+    const int start[4] = {sliceY,
+                    sliceY >> s->v_chr_sub_sample,
+                    sliceY >> s->v_chr_sub_sample,
+                    sliceY};
+    const int height[4] = {sliceH,
+                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
+                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
+                    sliceH};
     s->width = dstW;
     for (i = 0; i < 4; ++i)
     {
         int j;
-        int lines = FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample);
+        int lines = height[i];
         lines = s->plane[i].available_lines < lines ? s->plane[i].available_lines : lines;
 
-        s->plane[i].sliceY = sliceY;
+        s->plane[i].sliceY = start[i];
         s->plane[i].sliceH = lines;
 
         for (j = 0; j < lines; ++j)
@@ -264,8 +257,8 @@ int ff_init_filters(SwsContext * c)
     int need_convert = c->lumToYV12 || c->readLumPlanar || c->alpToYV12 || c->readAlpPlanar;
 
     c->numDesc = need_convert ? 2 : 1;
-    c->desc = av_malloc(sizeof(SwsFilterDescriptor) * c->numDesc);
-    c->slice = av_malloc(sizeof(SwsSlice) * (c->numDesc+1));
+    c->desc = av_malloc_array(sizeof(SwsFilterDescriptor), c->numDesc);
+    c->slice = av_malloc_array(sizeof(SwsSlice), c->numDesc + 1);
 
     for (i = 0; i < c->numDesc+1; ++i)
         alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, 0, 0);
