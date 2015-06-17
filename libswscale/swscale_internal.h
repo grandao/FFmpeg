@@ -965,16 +965,24 @@ typedef struct SwsFilterDescriptor
     SwsSlice * src;
     SwsSlice * dst;
 
-    uint16_t * filter;
-    int * filter_pos;
-    int filter_size;
-
     int alpha;
-    int xInc;
-    uint32_t * pal;
+    void * instance;
 
    int (*process)(SwsContext*, struct SwsFilterDescriptor*, int, int);
 } SwsFilterDescriptor;
+
+typedef struct LumConvertInstance
+{
+    uint32_t * pal;
+} LumConvertInstance;
+
+typedef struct LumScaleInstance
+{
+    uint16_t * filter;
+    int * filter_pos;
+    int filter_size;
+    int xInc;
+} LumScaleInstance;
 
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int sliceY, int sliceH, int skip);
 int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int sliceY, int sliceH);
