@@ -1,15 +1,15 @@
 #include "swscale_internal.h"
 
 
-static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lines, int v_sub_sample, int h_sub_sample)
+static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lumLines, int chrLines, int h_sub_sample, int v_sub_sample)
 {
     int i;
     int err = 0;
-
-    int size[4] = { lines,
-                    FF_CEIL_RSHIFT(lines, v_sub_sample),
-                    FF_CEIL_RSHIFT(lines, v_sub_sample),
-                    lines };
+ 
+    int size[4] = { lumLines,
+                    chrLines,
+                    chrLines,
+                    lumLines };
 
     //s->width;
     s->h_chr_sub_sample = h_sub_sample;
@@ -45,24 +45,24 @@ static void free_slice(SwsSlice *s)
         av_freep(&s->plane[i].line);
 }
 
-int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int sliceY, int sliceH, int skip)
+int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH, int skip)
 {
     int i = 0;
 
-    const int start[4] = {sliceY,
-                    sliceY >> s->v_chr_sub_sample,
-                    sliceY >> s->v_chr_sub_sample,
-                    sliceY};
-
+    const int start[4] = {lumY,
+                    chrY,
+                    chrY,
+                    lumY};
+ 
     const int stride1[4] = {stride[0],
-                    stride[1] << skip,
-                    stride[2] << skip,
-                    stride[3]};
-
-    const int height[4] = {sliceH,
-                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
-                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
-                    sliceH};
+                     stride[1] << skip,
+                     stride[2] << skip,
+                     stride[3]};
+ 
+    const int height[4] = {lumH,
+                    chrH,
+                    chrH,
+                    lumH};
 
     s->width = srcW;
 
@@ -83,17 +83,18 @@ int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int src
     return 1;
 }
 
-int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int sliceY, int sliceH)
+int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int lumY, int lumH, int chrY, int chrH)
 {
     int i;
-    const int start[4] = {sliceY,
-                    sliceY >> s->v_chr_sub_sample,
-                    sliceY >> s->v_chr_sub_sample,
-                    sliceY};
-    const int height[4] = {sliceH,
-                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
-                    FF_CEIL_RSHIFT(sliceH, s->v_chr_sub_sample),
-                    sliceH};
+    const int start[4] = {lumY,
+                    chrY,
+                    chrY,
+                    lumY};
+
+    const int height[4] = {lumH,
+                    chrH,
+                    chrH,
+                    lumH};
     s->width = dstW;
     for (i = 0; i < 4; ++i)
     {
@@ -117,7 +118,7 @@ int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int slice
 static int init_slice_1(SwsSlice *s, uint8_t *v, uint8_t *v2, int dstW, int sliceY, int sliceH)
 {
     int i;
-    uint8_t *ptr[4] = {v, v, v, v2};
+    uint8_t *ptr[4] = {v, v, v2, v2};
     s->width = dstW;
     for (i = 0; i < 4; ++i)
     {
@@ -274,7 +275,7 @@ int ff_init_filters(SwsContext * c)
     c->slice = av_malloc_array(sizeof(SwsSlice), c->numDesc + 1);
 
     for (i = 0; i < c->numDesc+1; ++i)
-        alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, 0, 0);
+        alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample);
 
     i = 0;
     if (need_convert)

@@ -504,8 +504,8 @@ static int swscale(SwsContext *c, const uint8_t *src[],
         line_pool[2] = &chrVPixBuf[chrBufIndex + 1];
         line_pool[3] = alpPixBuf ? &alpPixBuf[lumBufIndex + 1] : NULL;
 
-        ff_init_slice_from_src(src_slice, (uint8_t**)src, srcStride, c->srcW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf, 0);
-        ff_init_slice_from_lp(dst_slice, (uint8_t ***)line_pool, dstW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf);
+        ff_init_slice_from_src(src_slice, (uint8_t**)src, srcStride, c->srcW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf, lastInChrBuf + 1, lastChrSrcY - lastInChrBuf,  0);
+        ff_init_slice_from_lp(dst_slice, (uint8_t ***)line_pool, dstW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf, lastInChrBuf + 1, lastChrSrcY - lastInChrBuf);
 
 #endif
         // Do horizontal scaling
