@@ -137,7 +137,7 @@ static int init_slice_1(SwsSlice *s, uint8_t *v, uint8_t *v2, int dstW, int slic
 
 static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
 {
-    LumScaleInstance *instance = desc->instance;
+    ScaleInstance *instance = desc->instance;
     int srcW = desc->src->width;
     int dstW = desc->dst->width;
     int xInc = instance->xInc;
@@ -187,7 +187,7 @@ static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
 static int lum_convert(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
 {
     int srcW = desc->src->width;
-    LumConvertInstance * instance = desc->instance;
+    ConvertInstance * instance = desc->instance;
     uint32_t * pal = instance->pal;
 
     int sp = sliceY - desc->src->plane[0].sliceY;
@@ -227,7 +227,7 @@ static int lum_convert(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
 
 static int init_desc_fmt_convert(SwsFilterDescriptor *desc, SwsSlice * src, SwsSlice *dst, uint32_t *pal)
 {
-    LumConvertInstance * li = av_malloc(sizeof(LumConvertInstance));
+    ConvertInstance * li = av_malloc(sizeof(ConvertInstance));
     if (!li)
         return AVERROR(ENOMEM);
     li->pal = pal;
@@ -244,7 +244,7 @@ static int init_desc_fmt_convert(SwsFilterDescriptor *desc, SwsSlice * src, SwsS
 
 static int init_desc_hscale(SwsFilterDescriptor *desc, SwsSlice *src, SwsSlice *dst, uint16_t *filter, int * filter_pos, int filter_size, int xInc)
 {
-    LumScaleInstance *li = av_malloc(sizeof(LumScaleInstance));
+    ScaleInstance *li = av_malloc(sizeof(ScaleInstance));
     if (!li)
         return AVERROR(ENOMEM);
 

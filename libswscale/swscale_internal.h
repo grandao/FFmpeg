@@ -971,18 +971,18 @@ typedef struct SwsFilterDescriptor
    int (*process)(SwsContext*, struct SwsFilterDescriptor*, int, int);
 } SwsFilterDescriptor;
 
-typedef struct LumConvertInstance
+typedef struct ConvertInstance
 {
     uint32_t * pal;
-} LumConvertInstance;
+} ConvertInstance;
 
-typedef struct LumScaleInstance
+typedef struct ScaleInstance
 {
     uint16_t * filter;
     int * filter_pos;
     int filter_size;
     int xInc;
-} LumScaleInstance;
+} ScaleInstance;
 
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int sliceY, int sliceH, int skip);
 int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int sliceY, int sliceH);
