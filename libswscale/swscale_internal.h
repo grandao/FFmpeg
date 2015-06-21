@@ -330,6 +330,7 @@ typedef struct SwsContext {
     uint16_t *inv_gamma;
 
     int numDesc;
+    int numSlice;
     struct SwsSlice *slice;
     struct SwsFilterDescriptor *desc;
 

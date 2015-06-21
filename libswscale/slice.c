@@ -265,30 +265,142 @@ static int init_desc_hscale(SwsFilterDescriptor *desc, SwsSlice *src, SwsSlice *
     return 1;
 }
 
+static int chr_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
+{
+    ScaleInstance *instance = desc->instance;
+    int srcW = FF_CEIL_RSHIFT(desc->src->width, desc->src->h_chr_sub_sample);
+    int dstW = FF_CEIL_RSHIFT(desc->dst->width, desc->dst->h_chr_sub_sample);
+    int xInc = instance->xInc;
+
+    uint8_t ** src1 = desc->src->plane[1].line;
+    uint8_t ** dst1 = desc->dst->plane[1].line;
+    uint8_t ** src2 = desc->src->plane[2].line;
+    uint8_t ** dst2 = desc->dst->plane[2].line;
+
+    int src_pos1 = sliceY - desc->src->plane[1].sliceY;
+    int dst_pos1 = sliceY - desc->dst->plane[1].sliceY;
+
+    int src_pos2 = sliceY - desc->src->plane[2].sliceY;
+    int dst_pos2 = sliceY - desc->dst->plane[2].sliceY;
+
+
+
+    if (!c->hcscale_fast) {
+        c->hcScale(c, (uint16_t*)dst1[dst_pos1], dstW, src1[src_pos1], instance->filter, instance->filter_pos, instance->filter_size);
+        c->hcScale(c, (uint16_t*)dst2[dst_pos2], dstW, src2[src_pos2], instance->filter, instance->filter_pos, instance->filter_size);
+    } else { // fast bilinear upscale / crap downscale
+        c->hcscale_fast(c, (uint16_t*)dst1[dst_pos1], (uint16_t*)dst2[dst_pos2], dstW, src1[src_pos1], src2[src_pos2], srcW, xInc);
+    }
+
+    if (c->chrConvertRange)
+        c->chrConvertRange((uint16_t*)dst1[dst_pos1], (uint16_t*)dst2[dst_pos2], dstW);
+
+    return 1;
+}
+
+static int chr_convert(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
+{
+    int srcW = FF_CEIL_RSHIFT(desc->src->width, desc->src->h_chr_sub_sample);
+    ConvertInstance * instance = desc->instance;
+    uint32_t * pal = instance->pal;
+
+    int sp = sliceY - desc->src->plane[1].sliceY;
+    int dp = sliceY - desc->dst->plane[1].sliceY;
+
+    const uint8_t * src[4] = { desc->src->plane[0].line[sp],
+                        desc->src->plane[1].line[sp],
+                        desc->src->plane[2].line[sp],
+                        desc->src->plane[3].line[sp]};
+    uint8_t * dst1 = desc->dst->plane[1].line[0/*dp*/];
+    uint8_t * dst2 = desc->dst->plane[2].line[0/*dp*/];
+
+    desc->dst->plane[1].sliceY = sliceY;
+    desc->dst->plane[1].sliceH = sliceH;
+    desc->dst->plane[2].sliceY = sliceY;
+    desc->dst->plane[2].sliceH = sliceH;
+
+    if (c->chrToYV12) {
+        c->chrToYV12(dst1, dst2, src[0], src[1], src[2], srcW, pal);
+    } else if (c->readChrPlanar) {
+        c->readChrPlanar(dst1, dst2, src, srcW, c->input_rgb2yuv_table);
+    }
+
+    return 1;
+}
+
+static int init_desc_cfmt_convert(SwsFilterDescriptor *desc, SwsSlice * src, SwsSlice *dst, uint32_t *pal)
+{
+    ConvertInstance * li = av_malloc(sizeof(ConvertInstance));
+    if (!li)
+        return AVERROR(ENOMEM);
+    li->pal = pal;
+    desc->instance = li;
+
+    desc->src =src;
+    desc->dst = dst;
+    desc->process = &chr_convert;
+
+    return 1;
+}
+
+static int init_desc_chscale(SwsFilterDescriptor *desc, SwsSlice *src, SwsSlice *dst, uint16_t *filter, int * filter_pos, int filter_size, int xInc)
+{
+    ScaleInstance *li = av_malloc(sizeof(ScaleInstance));
+    if (!li)
+        return AVERROR(ENOMEM);
+
+    li->filter = filter;
+    li->filter_pos = filter_pos;
+    li->filter_size = filter_size;
+    li->xInc = xInc;
+
+    desc->instance = li;
+
+    desc->alpha = isALPHA(src->fmt) && isALPHA(dst->fmt);
+    desc->src = src;
+    desc->dst = dst;
+
+    desc->process = &chr_h_scale;
+
+    return 1;
+}
+
 int ff_init_filters(SwsContext * c)
 {
     int i;
+    int numDescPerChannel;
     int need_convert = c->lumToYV12 || c->readLumPlanar || c->alpToYV12 || c->readAlpPlanar;
 
-    c->numDesc = need_convert ? 2 : 1;
-    c->desc = av_malloc_array(sizeof(SwsFilterDescriptor), c->numDesc);
-    c->slice = av_malloc_array(sizeof(SwsSlice), c->numDesc + 1);
+    numDescPerChannel= need_convert ? 2 : 1;
+    c->numSlice = numDescPerChannel + 1;
 
-    for (i = 0; i < c->numDesc+1; ++i)
+    c->numDesc = (c->needs_hcscale ? 2 : 1) * numDescPerChannel;
+
+    c->desc = av_malloc_array(sizeof(SwsFilterDescriptor), c->numDesc);
+    c->slice = av_malloc_array(sizeof(SwsSlice), c->numSlice);
+
+    for (i = 0; i < c->numSlice-1; ++i)
         alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample);
+    alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample);
 
     i = 0;
     if (need_convert)
     {
-        init_desc_fmt_convert(&c->desc[i], &c->slice[i], &c->slice[i+1], (uint32_t) usePal(c->srcFormat) ? c->pal_yuv : c->input_rgb2yuv_table);
+        init_desc_fmt_convert(&c->desc[i], &c->slice[i], &c->slice[i+1], usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table);
         init_slice_1(&c->slice[i+1], c->formatConvBuffer, (c->formatConvBuffer + FFALIGN(c->srcW*2+78, 16)), c->srcW, 0, c->vLumFilterSize);
         c->desc[i].alpha = c->alpPixBuf != 0;
+
+        if (c->needs_hcscale)
+            init_desc_cfmt_convert(&c->desc[i+numDescPerChannel], &c->slice[i], &c->slice[i+1], usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table);
+
         ++i;
     }
 
     
     init_desc_hscale(&c->desc[i], &c->slice[i], &c->slice[i+1], c->hLumFilter, c->hLumFilterPos, c->hLumFilterSize, c->lumXInc);
     c->desc[i].alpha = c->alpPixBuf != 0;
+    if (c->needs_hcscale)
+        init_desc_chscale(&c->desc[i+numDescPerChannel], &c->slice[i], &c->slice[i+1], c->hChrFilter, c->hChrFilterPos, c->hChrFilterSize, c->chrXInc);
 
     return 1;
 }
@@ -303,7 +415,7 @@ int ff_free_filters(SwsContext *c)
     if (c->slice)
     {
         int i;
-        for (i = 0; i < c->numDesc+1; ++i)
+        for (i = 0; i < c->numSlice; ++i)
             free_slice(&c->slice[i]);
     }
     return 1;

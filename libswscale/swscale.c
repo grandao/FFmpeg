@@ -374,8 +374,10 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     int perform_gamma = c->is_internal_gamma;
 
     int numDesc = c->numDesc;
-    SwsSlice *src_slice = &c->slice[0];
-    SwsSlice *dst_slice = &c->slice[numDesc];
+    int lumStart = 0;
+    int lumEnd = c->needs_hcscale ? numDesc / 2 : numDesc;
+    SwsSlice *src_slice = &c->slice[lumStart];
+    SwsSlice *dst_slice = &c->slice[lumEnd];
     SwsFilterDescriptor *desc = c->desc;
     int16_t **line_pool[4];
 
@@ -525,7 +527,7 @@ static int swscale(SwsContext *c, const uint8_t *src[],
             if (perform_gamma)
                 gamma_convert((uint8_t **)src1, srcW, c->inv_gamma);
 #if NEW_FILTER
-            for (i = 0; i < numDesc; ++i)
+            for (i = lumStart; i < lumEnd; ++i)
                 desc[i].process(c, &desc[i], lastInLumBuf + 1, 1);
 #else
             hyscale(c, lumPixBuf[lumBufIndex], dstW, src1, srcW, lumXInc,
