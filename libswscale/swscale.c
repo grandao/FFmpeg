@@ -375,9 +375,11 @@ static int swscale(SwsContext *c, const uint8_t *src[],
 
     int numDesc = c->numDesc;
     int lumStart = 0;
-    int lumEnd = c->needs_hcscale ? numDesc / 2 : numDesc;
+    int lumEnd = c->descIndex[0];
+    int chrStart = lumEnd;
+    int chrEnd = c->descIndex[1];
     SwsSlice *src_slice = &c->slice[lumStart];
-    SwsSlice *dst_slice = &c->slice[lumEnd];
+    SwsSlice *dst_slice = &c->slice[c->numSlice-1];
     SwsFilterDescriptor *desc = c->desc;
     int16_t **line_pool[4];
 
@@ -549,17 +551,22 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 src[2] + (lastInChrBuf + 1 - chrSrcSliceY) * srcStride[2],
                 src[3] + (lastInChrBuf + 1 - chrSrcSliceY) * srcStride[3],
             };
+            int i;
             chrBufIndex++;
             av_assert0(chrBufIndex < 2 * vChrBufSize);
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY < (chrSrcSliceH));
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY >= 0);
             // FIXME replace parameters through context struct (some at least)
-
+#if NEW_FILTER
+            for (i = chrStart; i < chrEnd; ++i)
+                desc[i].process(c, &desc[i], lastInChrBuf + 1, 1);
+#else
             if (c->needs_hcscale)
                 hcscale(c, chrUPixBuf[chrBufIndex], chrVPixBuf[chrBufIndex],
                         chrDstW, src1, chrSrcW, chrXInc,
                         hChrFilter, hChrFilterPos, hChrFilterSize,
                         formatConvBuffer, pal);
+#endif
             lastInChrBuf++;
             DEBUG_BUFFERS("\t\tchrBufIndex %d: lastInChrBuf: %d\n",
                           chrBufIndex, lastInChrBuf);

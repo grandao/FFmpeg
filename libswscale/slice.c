@@ -368,13 +368,24 @@ static int init_desc_chscale(SwsFilterDescriptor *desc, SwsSlice *src, SwsSlice 
 int ff_init_filters(SwsContext * c)
 {
     int i;
-    int numDescPerChannel;
-    int need_convert = c->lumToYV12 || c->readLumPlanar || c->alpToYV12 || c->readAlpPlanar;
+    int index;
+    int num_ydesc;
+    int num_cdesc;
+    int need_lum_conv = c->lumToYV12 || c->readLumPlanar || c->alpToYV12 || c->readAlpPlanar;
+    int need_chr_conv = c->chrToYV12 || c->readChrPlanar;
+    int srcIdx, dstIdx;
 
-    numDescPerChannel= need_convert ? 2 : 1;
-    c->numSlice = numDescPerChannel + 1;
+    uint32_t * pal = usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table;
 
-    c->numDesc = (c->needs_hcscale ? 2 : 1) * numDescPerChannel;
+    num_ydesc = need_lum_conv ? 2 : 1;
+    num_cdesc = c->needs_hcscale ? (need_chr_conv ? 2 : 1) : 0;
+
+    c->numSlice = FFMAX(num_ydesc, num_cdesc) + 1;
+    c->numDesc = num_ydesc + num_cdesc;
+    c->descIndex[0] = num_ydesc;
+    c->descIndex[1] = num_ydesc + num_cdesc;
+
+    
 
     c->desc = av_malloc_array(sizeof(SwsFilterDescriptor), c->numDesc);
     c->slice = av_malloc_array(sizeof(SwsSlice), c->numSlice);
@@ -383,24 +394,43 @@ int ff_init_filters(SwsContext * c)
         alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample);
     alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample);
 
-    i = 0;
-    if (need_convert)
+    index = 0;
+    srcIdx = 0;
+    dstIdx = 1;
+
+    // temp slice for color space conversion
+    if (need_lum_conv || need_chr_conv)
+        init_slice_1(&c->slice[dstIdx], c->formatConvBuffer, (c->formatConvBuffer + FFALIGN(c->srcW*2+78, 16)), c->srcW, 0, c->vLumFilterSize);
+
+    if (need_lum_conv)
     {
-        init_desc_fmt_convert(&c->desc[i], &c->slice[i], &c->slice[i+1], usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table);
-        init_slice_1(&c->slice[i+1], c->formatConvBuffer, (c->formatConvBuffer + FFALIGN(c->srcW*2+78, 16)), c->srcW, 0, c->vLumFilterSize);
-        c->desc[i].alpha = c->alpPixBuf != 0;
-
-        if (c->needs_hcscale)
-            init_desc_cfmt_convert(&c->desc[i+numDescPerChannel], &c->slice[i], &c->slice[i+1], usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table);
-
-        ++i;
+        init_desc_fmt_convert(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx], pal);
+        c->desc[index].alpha = c->alpPixBuf != 0;
+        ++index;
+        srcIdx = dstIdx;
     }
 
-    
-    init_desc_hscale(&c->desc[i], &c->slice[i], &c->slice[i+1], c->hLumFilter, c->hLumFilterPos, c->hLumFilterSize, c->lumXInc);
-    c->desc[i].alpha = c->alpPixBuf != 0;
+
+    dstIdx = FFMAX(num_ydesc, num_cdesc);
+    init_desc_hscale(&c->desc[index], &c->slice[index], &c->slice[dstIdx], c->hLumFilter, c->hLumFilterPos, c->hLumFilterSize, c->lumXInc);
+    c->desc[index].alpha = c->alpPixBuf != 0;
+
+
+    ++index;
     if (c->needs_hcscale)
-        init_desc_chscale(&c->desc[i+numDescPerChannel], &c->slice[i], &c->slice[i+1], c->hChrFilter, c->hChrFilterPos, c->hChrFilterSize, c->chrXInc);
+    {
+        srcIdx = 0;
+        dstIdx = 1;
+        if (need_chr_conv)
+        {
+            init_desc_cfmt_convert(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx], pal);
+            ++index;
+            srcIdx = dstIdx;
+        }
+
+        dstIdx = FFMAX(num_ydesc, num_cdesc);
+        init_desc_chscale(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx], c->hChrFilter, c->hChrFilterPos, c->hChrFilterSize, c->chrXInc);
+    }
 
     return 1;
 }
