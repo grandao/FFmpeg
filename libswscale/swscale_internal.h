@@ -958,6 +958,7 @@ typedef struct SwsSlice
     int width;
     int h_chr_sub_sample;
     int v_chr_sub_sample;
+    int is_ring;
     enum AVPixelFormat fmt;
     SwsPlane plane[MAX_SLICE_PLANES];
 } SwsSlice;
@@ -986,7 +987,7 @@ typedef struct ScaleInstance
     int xInc;
 } ScaleInstance;
 
-int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH, int skip);
+int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH);
 int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int lumY, int lumH, int chrY, int chrH);
 int ff_init_filters(SwsContext *c);
 int ff_free_filters(SwsContext *c);
