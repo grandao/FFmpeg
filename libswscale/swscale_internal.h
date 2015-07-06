@@ -991,5 +991,6 @@ int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int src
 int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int lumY, int lumH, int chrY, int chrH);
 int ff_init_filters(SwsContext *c);
 int ff_free_filters(SwsContext *c);
+int ff_rotate_slice(SwsSlice *s, int lum, int chr);
 
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */

@@ -46,6 +46,57 @@ static void free_slice(SwsSlice *s)
         av_freep(&s->plane[i].line);
 }
 
+static int alloc_lines(SwsSlice *s, int width)
+{
+    int i;
+    for (i = 0; i < 4; ++i)
+    {
+        int n = s->plane[i].available_lines;
+        int j;
+        for (j = 0; j < n; ++j)
+        {
+            s->plane[i].line[j] = av_mallocz(width);
+            if (s->is_ring)
+               s->plane[i].line[j+n] = s->plane[i].line[j]; 
+        }
+    }
+    return 1;
+}
+
+int ff_rotate_slice(SwsSlice *s, int lum, int chr)
+{
+    int i;
+    if (lum)
+    {
+        for (i = 0; i < 4; i+=3)
+        {
+            int n = s->plane[i].available_lines;
+            int l = s->plane[i].sliceH;
+
+            if (l+lum >= n * 2)
+            {
+                s->plane[i].sliceY += n;
+                s->plane[i].sliceH -= n;
+            }
+        }
+    }
+    if (chr)
+    {
+        for (i = 1; i < 3; ++i)
+        {
+            int n = s->plane[i].available_lines;
+            int l = s->plane[i].sliceH;
+
+            if (l+chr >= n * 2)
+            {
+                s->plane[i].sliceY += n;
+                s->plane[i].sliceH -= n;
+            }
+        }
+    }
+    return 1;
+}
+
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH)
 {
     int i = 0;
@@ -171,6 +222,7 @@ static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
     if (c->lumConvertRange)
         c->lumConvertRange((int16_t*)dst[dst_pos], dstW);
 
+    desc->dst->plane[0].sliceH += 1;
 
     if (desc->alpha)
     {
@@ -180,7 +232,7 @@ static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
         src_pos = sliceY - desc->src->plane[3].sliceY;
         dst_pos = sliceY - desc->dst->plane[3].sliceY;
 
-
+        desc->dst->plane[3].sliceH += 1;
 
         if (!c->hyscale_fast) {
             c->hyScale(c, (int16_t*)dst[dst_pos], dstW, (const uint8_t *)src[src_pos], instance->filter,
@@ -306,6 +358,8 @@ static int chr_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
     if (c->chrConvertRange)
         c->chrConvertRange((uint16_t*)dst1[dst_pos1], (uint16_t*)dst2[dst_pos2], dstW);
 
+    desc->dst->plane[1].sliceH += 1;
+    desc->dst->plane[2].sliceH += 1;
     return 1;
 }
 
@@ -387,9 +441,12 @@ int ff_init_filters(SwsContext * c)
     int need_lum_conv = c->lumToYV12 || c->readLumPlanar || c->alpToYV12 || c->readAlpPlanar;
     int need_chr_conv = c->chrToYV12 || c->readChrPlanar;
     int srcIdx, dstIdx;
-	int maxSize;
+    int dst_stride = FFALIGN(c->dstW * sizeof(int16_t) + 66, 16);
 
     uint32_t * pal = usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table;
+
+    if (c->dstBpc == 16)
+        dst_stride <<= 1;
 
     num_ydesc = need_lum_conv ? 2 : 1;
     num_cdesc = c->needs_hcscale ? (need_chr_conv ? 2 : 1) : 0;
@@ -404,19 +461,23 @@ int ff_init_filters(SwsContext * c)
     c->desc = av_malloc_array(sizeof(SwsFilterDescriptor), c->numDesc);
     c->slice = av_malloc_array(sizeof(SwsSlice), c->numSlice);
 
-	maxSize = FFMAX(c->vLumFilterSize, c->vChrFilterSize << c->chrSrcVSubSample);
+
     alloc_slice(&c->slice[0], c->srcFormat, c->srcH, c->chrSrcH, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
     for (i = 1; i < c->numSlice-1; ++i)
+    {
         alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
-    alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample, 0);
+        alloc_lines(&c->slice[i], FFALIGN(c->srcW*2+78, 16));
+    }
+    alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample, 1);
+    alloc_lines(&c->slice[i], dst_stride);
 
     index = 0;
     srcIdx = 0;
     dstIdx = 1;
 
     // temp slice for color space conversion
-    if (need_lum_conv || need_chr_conv)
-        init_slice_1(&c->slice[dstIdx], c->formatConvBuffer, (c->formatConvBuffer + FFALIGN(c->srcW*2+78, 16)), c->srcW, 0, c->vLumFilterSize);
+    //if (need_lum_conv || need_chr_conv)
+    //    init_slice_1(&c->slice[dstIdx], c->formatConvBuffer, (c->formatConvBuffer + FFALIGN(c->srcW*2+78, 16)), c->srcW, 0, c->vLumFilterSize);
 
     if (need_lum_conv)
     {
@@ -466,4 +527,9 @@ int ff_free_filters(SwsContext *c)
     }
     return 1;
 }
+
+
+
+
+
 
