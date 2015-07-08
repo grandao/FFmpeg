@@ -432,6 +432,47 @@ static int init_desc_chscale(SwsFilterDescriptor *desc, SwsSlice *src, SwsSlice 
     return 1;
 }
 
+static void fill_ones(SwsSlice *s, int n, int is16bit)
+{
+    int i;
+    for (i = 0; i < 4; ++i)
+    {
+        int j;
+        int size = s->plane[i].available_lines;
+        for (int j = 0; j < size; ++j)
+        {
+            int k;
+            int end = is16bit ? n>>1: n;
+      
+            if (is16bit)
+                for (k = 0; k < end; ++k)
+                    ((int32_t*)(s->plane[i].line[j]))[k] = 1<<18;
+            else
+                for (k = 0; k < end; ++k)
+                    ((int16_t*)(s->plane[i].line[j]))[k] = 1<<14;
+        }   
+    }
+}
+
+static int no_chr_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
+{
+    desc->dst->plane[1].sliceY = sliceY + sliceH - desc->dst->plane[1].available_lines;
+    desc->dst->plane[1].sliceH = desc->dst->plane[1].available_lines;
+    desc->dst->plane[2].sliceY = sliceY + sliceH - desc->dst->plane[2].available_lines;
+    desc->dst->plane[2].sliceH = desc->dst->plane[2].available_lines;
+    return 0;
+}
+
+static int init_desc_no_chr(SwsFilterDescriptor *desc, SwsSlice * src, SwsSlice *dst)
+{
+    desc->src = src;
+    desc->dst = dst;
+    desc->alpha = 0;
+    desc->instance = NULL;
+    desc->process = &no_chr_scale;
+    return 0;
+}
+
 int ff_init_filters(SwsContext * c)
 {
     int i;
@@ -449,7 +490,7 @@ int ff_init_filters(SwsContext * c)
         dst_stride <<= 1;
 
     num_ydesc = need_lum_conv ? 2 : 1;
-    num_cdesc = c->needs_hcscale ? (need_chr_conv ? 2 : 1) : 0;
+    num_cdesc = /*c->needs_hcscale ? */(need_chr_conv ? 2 : 1)/* : 0*/;
 
     c->numSlice = FFMAX(num_ydesc, num_cdesc) + 1;
     c->numDesc = num_ydesc + num_cdesc;
@@ -470,6 +511,7 @@ int ff_init_filters(SwsContext * c)
     }
     alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample, 1);
     alloc_lines(&c->slice[i], dst_stride);
+    fill_ones(&c->slice[i], dst_stride>>1, c->dstBpc == 16);
 
     index = 0;
     srcIdx = 0;
@@ -494,7 +536,6 @@ int ff_init_filters(SwsContext * c)
 
 
     ++index;
-    if (c->needs_hcscale)
     {
         srcIdx = 0;
         dstIdx = 1;
@@ -506,7 +547,10 @@ int ff_init_filters(SwsContext * c)
         }
 
         dstIdx = FFMAX(num_ydesc, num_cdesc);
-        init_desc_chscale(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx], c->hChrFilter, c->hChrFilterPos, c->hChrFilterSize, c->chrXInc);
+        if (c->needs_hcscale)
+            init_desc_chscale(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx], c->hChrFilter, c->hChrFilterPos, c->hChrFilterSize, c->chrXInc);
+        else
+            init_desc_no_chr(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx]);
     }
 
     return 1;
