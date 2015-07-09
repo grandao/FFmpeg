@@ -1,7 +1,47 @@
 #include "swscale_internal.h"
 
+static void free_lines(SwsSlice *s)
+{
+    int i;
+    for (i = 0; i < 4; ++i)
+    {
+        int n = s->plane[i].available_lines;
+        int j;
+        for (j = 0; j < n; ++j)
+        {
+            av_freep(&s->plane[i].line[j]);
+            if (s->is_ring)
+               s->plane[i].line[j+n] = NULL;
+        }
+    }
+    s->should_free_lines = 0;
+}
 
-static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lumLines, int chrLines, int h_sub_sample, int v_sub_sample, int ring)
+static int alloc_lines(SwsSlice *s, int width)
+{
+    int i;
+    s->should_free_lines = 1;
+
+    for (i = 0; i < 4; ++i)
+    {
+        int n = s->plane[i].available_lines;
+        int j;
+        for (j = 0; j < n; ++j)
+        {
+            s->plane[i].line[j] = av_mallocz(width);
+            if (!s->plane[i].line[j])
+            {
+                free_lines(s);
+                return AVERROR(ENOMEM);
+            }
+            if (s->is_ring)
+               s->plane[i].line[j+n] = s->plane[i].line[j]; 
+        }
+    }
+    return 1;
+}
+
+static int alloc_slice(SwsSlice *s, enum AVPixelFormat fmt, int lumLines, int chrLines, int h_sub_sample, int v_sub_sample, int ring)
 {
     int i;
     int err = 0;
@@ -16,15 +56,21 @@ static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lumLines, int c
     s->v_chr_sub_sample = v_sub_sample;
     s->fmt = fmt;
     s->is_ring = ring;
+    s->should_free_lines = 0;
 
     for (i = 0; i < 4; ++i)
     {
-        s->plane[i].line = av_malloc_array(sizeof(uint8_t*), size[i] * ( ring == 0 ? 1 : 2));
+        int j;
+        int n = size[i] * ( ring == 0 ? 1 : 2);
+        s->plane[i].line = av_malloc_array(sizeof(uint8_t*), n);
         if (!s->plane[i].line) 
         {
             err = AVERROR(ENOMEM);
             break;
         }
+        for (int j = 0; j < n; ++j)
+            s->plane[i].line[j] = NULL;
+
         s->plane[i].available_lines = size[i];
         s->plane[i].sliceY = 0;
         s->plane[i].sliceH = 0;
@@ -42,25 +88,10 @@ static int alloc_slice(SwsSlice * s, enum AVPixelFormat fmt, int lumLines, int c
 static void free_slice(SwsSlice *s)
 {
     int i;
+    if (s->should_free_lines)
+        free_lines(s);
     for (i = 0; i < 4; ++i)
         av_freep(&s->plane[i].line);
-}
-
-static int alloc_lines(SwsSlice *s, int width)
-{
-    int i;
-    for (i = 0; i < 4; ++i)
-    {
-        int n = s->plane[i].available_lines;
-        int j;
-        for (j = 0; j < n; ++j)
-        {
-            s->plane[i].line[j] = av_mallocz(width);
-            if (s->is_ring)
-               s->plane[i].line[j+n] = s->plane[i].line[j]; 
-        }
-    }
-    return 1;
 }
 
 int ff_rotate_slice(SwsSlice *s, int lum, int chr)
@@ -143,59 +174,6 @@ int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int src
 
     return 1;
 }
-
-int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int lumY, int lumH, int chrY, int chrH)
-{
-    int i;
-    const int start[4] = {lumY,
-                    chrY,
-                    chrY,
-                    lumY};
-
-    const int height[4] = {lumH,
-                    chrH,
-                    chrH,
-                    lumH};
-    s->width = dstW;
-    for (i = 0; i < 4; ++i)
-    {
-        int j;
-        int lines = height[i];
-        lines = s->plane[i].available_lines < lines ? s->plane[i].available_lines : lines;
-
-        s->plane[i].sliceY = start[i];
-        s->plane[i].sliceH = lines;
-
-        for (j = 0; j < lines; ++j)
-        {
-            uint8_t * v = linesPool[i] ? linesPool[i][j] : NULL;
-            s->plane[i].line[j] = v;
-        }
-
-    }
-    return 1;
-}
-
-static int init_slice_1(SwsSlice *s, uint8_t *v, uint8_t *v2, int dstW, int sliceY, int sliceH)
-{
-    int i;
-    uint8_t *ptr[4] = {v, v, v2, v2};
-    s->width = dstW;
-    for (i = 0; i < 4; ++i)
-    {
-        int j;
-        int lines = s->plane[i].available_lines;
-
-        s->plane[i].sliceY = sliceY;
-        s->plane[i].sliceH = lines;
-
-        for (j = 0; j < lines; ++j)
-            s->plane[i].line[j] = ptr[i];
-
-    }
-    return 1;
-}
-
 
 static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
 {

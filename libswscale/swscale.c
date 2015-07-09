@@ -525,16 +525,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
 
 #define NEW_FILTER 1
         
-
-#if 0 //NEW_FILTER
-        line_pool[0] = &lumPixBuf[lumBufIndex + 1];
-        line_pool[1] = &chrUPixBuf[chrBufIndex + 1];
-        line_pool[2] = &chrVPixBuf[chrBufIndex + 1];
-        line_pool[3] = alpPixBuf ? &alpPixBuf[lumBufIndex + 1] : NULL;
-
-        ff_init_slice_from_lp(dst_slice, (uint8_t ***)line_pool, dstW, lastInLumBuf + 1, lastLumSrcY - lastInLumBuf, lastInChrBuf + 1, lastChrSrcY - lastInChrBuf);
-
-#endif
         ff_rotate_slice(dst_slice, lastLumSrcY - lastInLumBuf, lastChrSrcY - lastInChrBuf);
         // Do horizontal scaling
         while (lastInLumBuf < lastLumSrcY) {

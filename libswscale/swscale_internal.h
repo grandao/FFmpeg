@@ -959,6 +959,7 @@ typedef struct SwsSlice
     int h_chr_sub_sample;
     int v_chr_sub_sample;
     int is_ring;
+    int should_free_lines;
     enum AVPixelFormat fmt;
     SwsPlane plane[MAX_SLICE_PLANES];
 } SwsSlice;
