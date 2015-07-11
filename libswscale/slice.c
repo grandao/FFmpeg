@@ -188,35 +188,37 @@ static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
     int src_pos = sliceY - desc->src->plane[0].sliceY;
     int dst_pos = sliceY - desc->dst->plane[0].sliceY;
 
-
-
-    if (!c->hyscale_fast) {
-        c->hyScale(c, (int16_t*)dst[dst_pos], dstW, (const uint8_t *)src[src_pos], instance->filter,
-                   instance->filter_pos, instance->filter_size);
-    } else { // fast bilinear upscale / crap downscale
-        c->hyscale_fast(c, (int16_t*)dst[dst_pos], dstW, src[src_pos], srcW, xInc);
-    }
-
-    if (c->lumConvertRange)
-        c->lumConvertRange((int16_t*)dst[dst_pos], dstW);
-
-    desc->dst->plane[0].sliceH += 1;
-
-    if (desc->alpha)
+    int i;
+    for (i = 0; i < sliceH; ++i)
     {
-        src = desc->src->plane[3].line;
-        dst = desc->dst->plane[3].line;
-
-        src_pos = sliceY - desc->src->plane[3].sliceY;
-        dst_pos = sliceY - desc->dst->plane[3].sliceY;
-
-        desc->dst->plane[3].sliceH += 1;
-
         if (!c->hyscale_fast) {
-            c->hyScale(c, (int16_t*)dst[dst_pos], dstW, (const uint8_t *)src[src_pos], instance->filter,
-                        instance->filter_pos, instance->filter_size);
+            c->hyScale(c, (int16_t*)dst[dst_pos+i], dstW, (const uint8_t *)src[src_pos+i], instance->filter,
+                       instance->filter_pos, instance->filter_size);
         } else { // fast bilinear upscale / crap downscale
-            c->hyscale_fast(c, (int16_t*)dst[dst_pos], dstW, src[src_pos], srcW, xInc);
+            c->hyscale_fast(c, (int16_t*)dst[dst_pos+i], dstW, src[src_pos+i], srcW, xInc);
+        }
+
+        if (c->lumConvertRange)
+            c->lumConvertRange((int16_t*)dst[dst_pos+i], dstW);
+
+        desc->dst->plane[0].sliceH += 1;
+
+        if (desc->alpha)
+        {
+            src = desc->src->plane[3].line;
+            dst = desc->dst->plane[3].line;
+
+            src_pos = sliceY - desc->src->plane[3].sliceY;
+            dst_pos = sliceY - desc->dst->plane[3].sliceY;
+
+            desc->dst->plane[3].sliceH += 1;
+
+            if (!c->hyscale_fast) {
+                c->hyScale(c, (int16_t*)dst[dst_pos+i], dstW, (const uint8_t *)src[src_pos+i], instance->filter,
+                            instance->filter_pos, instance->filter_size);
+            } else { // fast bilinear upscale / crap downscale
+                c->hyscale_fast(c, (int16_t*)dst[dst_pos+i], dstW, src[src_pos+i], srcW, xInc);
+            }
         }
     }
 
@@ -233,34 +235,36 @@ static int lum_convert(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
 
     int sp0 = sliceY - desc->src->plane[0].sliceY;
     int sp1 = (sliceY >> desc->src->v_chr_sub_sample) - desc->src->plane[1].sliceY;
-    int dp = sliceY - desc->dst->plane[0].sliceY;
-
-    const uint8_t * src[4] = { desc->src->plane[0].line[sp0],
-                        desc->src->plane[1].line[sp1],
-                        desc->src->plane[2].line[sp1],
-                        desc->src->plane[3].line[sp0]};
-    uint8_t * dst = desc->dst->plane[0].line[0/*dp*/];
 
     desc->dst->plane[0].sliceY = sliceY;
     desc->dst->plane[0].sliceH = sliceH;
     desc->dst->plane[3].sliceY = sliceY;
     desc->dst->plane[3].sliceH = sliceH;
 
-    if (c->lumToYV12) {
-        c->lumToYV12(dst, src[0], src[1], src[2], srcW, pal);
-    } else if (c->readLumPlanar) {
-        c->readLumPlanar(dst, src, srcW, c->input_rgb2yuv_table);
-    } 
-    
-    
-    if (desc->alpha)
+    int i;
+    for (i = 0; i < sliceH; ++i)
     {
-        dp = sliceY - desc->dst->plane[3].sliceY;
-        dst = desc->dst->plane[3].line[dp];
-        if (c->alpToYV12) {
-            c->alpToYV12(dst, src[3], src[1], src[2], srcW, pal);
-        } else if (c->readAlpPlanar) {
-            c->readAlpPlanar(dst, src, srcW, NULL);
+        const uint8_t * src[4] = { desc->src->plane[0].line[sp0+i],
+                        desc->src->plane[1].line[sp1+i],
+                        desc->src->plane[2].line[sp1+i],
+                        desc->src->plane[3].line[sp0+i]};
+        uint8_t * dst = desc->dst->plane[0].line[i];
+
+        if (c->lumToYV12) {
+            c->lumToYV12(dst, src[0], src[1], src[2], srcW, pal);
+        } else if (c->readLumPlanar) {
+            c->readLumPlanar(dst, src, srcW, c->input_rgb2yuv_table);
+        } 
+        
+        
+        if (desc->alpha)
+        {
+            dst = desc->dst->plane[3].line[i];
+            if (c->alpToYV12) {
+                c->alpToYV12(dst, src[3], src[1], src[2], srcW, pal);
+            } else if (c->readAlpPlanar) {
+                c->readAlpPlanar(dst, src, srcW, NULL);
+            }
         }
     }
 
@@ -325,19 +329,22 @@ static int chr_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
     int dst_pos2 = sliceY - desc->dst->plane[2].sliceY;
 
 
+    int i;
+    for (i = 0; i < sliceH; ++i)
+    {
+        if (!c->hcscale_fast) {
+            c->hcScale(c, (uint16_t*)dst1[dst_pos1+i], dstW, src1[src_pos1+i], instance->filter, instance->filter_pos, instance->filter_size);
+            c->hcScale(c, (uint16_t*)dst2[dst_pos2+i], dstW, src2[src_pos2+i], instance->filter, instance->filter_pos, instance->filter_size);
+        } else { // fast bilinear upscale / crap downscale
+            c->hcscale_fast(c, (uint16_t*)dst1[dst_pos1+i], (uint16_t*)dst2[dst_pos2+i], dstW, src1[src_pos1+i], src2[src_pos2+i], srcW, xInc);
+        }
 
-    if (!c->hcscale_fast) {
-        c->hcScale(c, (uint16_t*)dst1[dst_pos1], dstW, src1[src_pos1], instance->filter, instance->filter_pos, instance->filter_size);
-        c->hcScale(c, (uint16_t*)dst2[dst_pos2], dstW, src2[src_pos2], instance->filter, instance->filter_pos, instance->filter_size);
-    } else { // fast bilinear upscale / crap downscale
-        c->hcscale_fast(c, (uint16_t*)dst1[dst_pos1], (uint16_t*)dst2[dst_pos2], dstW, src1[src_pos1], src2[src_pos2], srcW, xInc);
+        if (c->chrConvertRange)
+            c->chrConvertRange((uint16_t*)dst1[dst_pos1+i], (uint16_t*)dst2[dst_pos2+i], dstW);
+
+        desc->dst->plane[1].sliceH += 1;
+        desc->dst->plane[2].sliceH += 1;
     }
-
-    if (c->chrConvertRange)
-        c->chrConvertRange((uint16_t*)dst1[dst_pos1], (uint16_t*)dst2[dst_pos2], dstW);
-
-    desc->dst->plane[1].sliceH += 1;
-    desc->dst->plane[2].sliceH += 1;
     return 1;
 }
 
@@ -349,27 +356,28 @@ static int chr_convert(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
 
     int sp0 = (sliceY - (desc->src->plane[0].sliceY >> desc->src->v_chr_sub_sample)) << desc->src->v_chr_sub_sample;
     int sp1 = sliceY - desc->src->plane[1].sliceY;
-    int dp = sliceY - desc->dst->plane[1].sliceY;
-
-    const uint8_t * src[4] = { desc->src->plane[0].line[sp0],
-                        desc->src->plane[1].line[sp1],
-                        desc->src->plane[2].line[sp1],
-                        desc->src->plane[3].line[sp0]};
-
-    uint8_t * dst1 = desc->dst->plane[1].line[0/*dp*/];
-    uint8_t * dst2 = desc->dst->plane[2].line[0/*dp*/];
 
     desc->dst->plane[1].sliceY = sliceY;
     desc->dst->plane[1].sliceH = sliceH;
     desc->dst->plane[2].sliceY = sliceY;
     desc->dst->plane[2].sliceH = sliceH;
 
-    if (c->chrToYV12) {
-        c->chrToYV12(dst1, dst2, src[0], src[1], src[2], srcW, pal);
-    } else if (c->readChrPlanar) {
-        c->readChrPlanar(dst1, dst2, src, srcW, c->input_rgb2yuv_table);
-    }
+    int i;
+    for (i = 0; i < sliceH; ++i)
+    {
+        const uint8_t * src[4] = { desc->src->plane[0].line[sp0+i],
+                        desc->src->plane[1].line[sp1+i],
+                        desc->src->plane[2].line[sp1+i],
+                        desc->src->plane[3].line[sp0+i]};
 
+        uint8_t * dst1 = desc->dst->plane[1].line[i];
+        uint8_t * dst2 = desc->dst->plane[2].line[i];
+        if (c->chrToYV12) {
+            c->chrToYV12(dst1, dst2, src[0], src[1], src[2], srcW, pal);
+        } else if (c->readChrPlanar) {
+            c->readChrPlanar(dst1, dst2, src, srcW, c->input_rgb2yuv_table);
+        }
+    }
     return 1;
 }
 
@@ -468,7 +476,7 @@ int ff_init_filters(SwsContext * c)
         dst_stride <<= 1;
 
     num_ydesc = need_lum_conv ? 2 : 1;
-    num_cdesc = /*c->needs_hcscale ? */(need_chr_conv ? 2 : 1)/* : 0*/;
+    num_cdesc = need_chr_conv ? 2 : 1;
 
     c->numSlice = FFMAX(num_ydesc, num_cdesc) + 1;
     c->numDesc = num_ydesc + num_cdesc;
@@ -494,10 +502,6 @@ int ff_init_filters(SwsContext * c)
     index = 0;
     srcIdx = 0;
     dstIdx = 1;
-
-    // temp slice for color space conversion
-    //if (need_lum_conv || need_chr_conv)
-    //    init_slice_1(&c->slice[dstIdx], c->formatConvBuffer, (c->formatConvBuffer + FFALIGN(c->srcW*2+78, 16)), c->srcW, 0, c->vLumFilterSize);
 
     if (need_lum_conv)
     {

@@ -487,6 +487,7 @@ static int swscale(SwsContext *c, const uint8_t *src[],
         int lastLumSrcY2 = FFMIN(c->srcH,    firstLumSrcY2 + vLumFilterSize) - 1;
         int lastChrSrcY  = FFMIN(c->chrSrcH, firstChrSrcY  + vChrFilterSize) - 1;
         int enough_lines;
+        int i;
 
         // handle holes (FAST_BILINEAR & weird filters)
         if (firstLumSrcY > lastInLumBuf) {
@@ -524,8 +525,23 @@ static int swscale(SwsContext *c, const uint8_t *src[],
         }
 
 #define NEW_FILTER 1
-        
+
+#if NEW_FILTER
         ff_rotate_slice(dst_slice, lastLumSrcY - lastInLumBuf, lastChrSrcY - lastInChrBuf);
+
+        if (lastInLumBuf < lastLumSrcY) {
+            for (i = lumStart; i < lumEnd; ++i)
+                desc[i].process(c, &desc[i], lastInLumBuf + 1, lastLumSrcY - lastInLumBuf);
+            lumBufIndex += lastLumSrcY - lastInLumBuf;
+            lastInLumBuf = lastLumSrcY;
+        }
+        if (lastInChrBuf < lastChrSrcY) {
+            for (i = chrStart; i < chrEnd; ++i)
+                desc[i].process(c, &desc[i], lastInChrBuf + 1, lastChrSrcY - lastInChrBuf);
+            chrBufIndex += lastChrSrcY - lastInChrBuf;
+            lastInChrBuf = lastChrSrcY;
+        }
+#else
         // Do horizontal scaling
         while (lastInLumBuf < lastLumSrcY) {
             const uint8_t *src1[4] = {
@@ -534,18 +550,15 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 src[2] + (lastInLumBuf + 1 - srcSliceY) * srcStride[2],
                 src[3] + (lastInLumBuf + 1 - srcSliceY) * srcStride[3],
             };
-            int i;
+
             lumBufIndex++;
             av_assert0(lumBufIndex < 2 * vLumBufSize);
             av_assert0(lastInLumBuf + 1 - srcSliceY < srcSliceH);
             av_assert0(lastInLumBuf + 1 - srcSliceY >= 0);
 
-            if (perform_gamma)
-                gamma_convert((uint8_t **)src1, srcW, c->inv_gamma);
-#if NEW_FILTER
-            for (i = lumStart; i < lumEnd; ++i)
-                desc[i].process(c, &desc[i], lastInLumBuf + 1, 1);
-#else
+            //if (perform_gamma)
+            //    gamma_convert((uint8_t **)src1, srcW, c->inv_gamma);
+
             hyscale(c, lumPixBuf[lumBufIndex], dstW, src1, srcW, lumXInc,
                     hLumFilter, hLumFilterPos, hLumFilterSize,
                     formatConvBuffer, pal, 0);
@@ -553,7 +566,7 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 hyscale(c, alpPixBuf[lumBufIndex], dstW, src1, srcW,
                         lumXInc, hLumFilter, hLumFilterPos, hLumFilterSize,
                         formatConvBuffer, pal, 1);
-#endif
+
             lastInLumBuf++;
             DEBUG_BUFFERS("\t\tlumBufIndex %d: lastInLumBuf: %d\n",
                           lumBufIndex, lastInLumBuf);
@@ -565,26 +578,24 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 src[2] + (lastInChrBuf + 1 - chrSrcSliceY) * srcStride[2],
                 src[3] + (lastInChrBuf + 1 - chrSrcSliceY) * srcStride[3],
             };
-            int i;
+
             chrBufIndex++;
             av_assert0(chrBufIndex < 2 * vChrBufSize);
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY < (chrSrcSliceH));
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY >= 0);
             // FIXME replace parameters through context struct (some at least)
-#if NEW_FILTER
-            for (i = chrStart; i < chrEnd; ++i)
-                desc[i].process(c, &desc[i], lastInChrBuf + 1, 1);
-#else
+
             if (c->needs_hcscale)
                 hcscale(c, chrUPixBuf[chrBufIndex], chrVPixBuf[chrBufIndex],
                         chrDstW, src1, chrSrcW, chrXInc,
                         hChrFilter, hChrFilterPos, hChrFilterSize,
                         formatConvBuffer, pal);
-#endif
+
             lastInChrBuf++;
             DEBUG_BUFFERS("\t\tchrBufIndex %d: lastInChrBuf: %d\n",
                           chrBufIndex, lastInChrBuf);
         }
+#endif
         // wrap buf index around to stay inside the ring buffer
         if (lumBufIndex >= vLumBufSize)
             lumBufIndex -= vLumBufSize;
@@ -725,8 +736,8 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                          chrUSrcPtr, chrVSrcPtr, vChrFilterSize,
                          alpSrcPtr, dest, dstW, dstY);
             }
-            if (perform_gamma)
-                gamma_convert(dest, dstW, c->gamma);
+            //if (perform_gamma)
+            //    gamma_convert(dest, dstW, c->gamma);
         }
     }
     if (isPlanar(dstFormat) && isALPHA(dstFormat) && !alpPixBuf) {
