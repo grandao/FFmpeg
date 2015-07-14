@@ -451,6 +451,8 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     }
     lastDstY = dstY;
 
+#define NEW_FILTER 1
+
     ff_init_slice_from_src(src_slice, (uint8_t**)src, srcStride, c->srcW,
             srcSliceY, srcSliceH,
             chrSrcSliceY, chrSrcSliceH);
@@ -524,23 +526,19 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                           lastLumSrcY, lastChrSrcY);
         }
 
-#define NEW_FILTER 1
-
 #if NEW_FILTER
         ff_rotate_slice(dst_slice, lastLumSrcY - lastInLumBuf, lastChrSrcY - lastInChrBuf);
 
-        if (lastInLumBuf < lastLumSrcY) {
-            for (i = lumStart; i < lumEnd; ++i)
-                desc[i].process(c, &desc[i], lastInLumBuf + 1, lastLumSrcY - lastInLumBuf);
-            lumBufIndex += lastLumSrcY - lastInLumBuf;
-            lastInLumBuf = lastLumSrcY;
-        }
-        if (lastInChrBuf < lastChrSrcY) {
-            for (i = chrStart; i < chrEnd; ++i)
-                desc[i].process(c, &desc[i], lastInChrBuf + 1, lastChrSrcY - lastInChrBuf);
-            chrBufIndex += lastChrSrcY - lastInChrBuf;
-            lastInChrBuf = lastChrSrcY;
-        }
+        for (i = lumStart; i < lumEnd; ++i)
+            desc[i].process(c, &desc[i], lastInLumBuf + 1, lastLumSrcY - lastInLumBuf);
+        lumBufIndex += lastLumSrcY - lastInLumBuf;
+        lastInLumBuf = lastLumSrcY;
+
+        for (i = chrStart; i < chrEnd; ++i)
+            desc[i].process(c, &desc[i], lastInChrBuf + 1, lastChrSrcY - lastInChrBuf);
+        chrBufIndex += lastChrSrcY - lastInChrBuf;
+        lastInChrBuf = lastChrSrcY;
+
 #else
         // Do horizontal scaling
         while (lastInLumBuf < lastLumSrcY) {
@@ -566,7 +564,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 hyscale(c, alpPixBuf[lumBufIndex], dstW, src1, srcW,
                         lumXInc, hLumFilter, hLumFilterPos, hLumFilterSize,
                         formatConvBuffer, pal, 1);
-
             lastInLumBuf++;
             DEBUG_BUFFERS("\t\tlumBufIndex %d: lastInLumBuf: %d\n",
                           lumBufIndex, lastInLumBuf);
@@ -584,13 +581,11 @@ static int swscale(SwsContext *c, const uint8_t *src[],
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY < (chrSrcSliceH));
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY >= 0);
             // FIXME replace parameters through context struct (some at least)
-
             if (c->needs_hcscale)
                 hcscale(c, chrUPixBuf[chrBufIndex], chrVPixBuf[chrBufIndex],
                         chrDstW, src1, chrSrcW, chrXInc,
                         hChrFilter, hChrFilterPos, hChrFilterSize,
                         formatConvBuffer, pal);
-
             lastInChrBuf++;
             DEBUG_BUFFERS("\t\tchrBufIndex %d: lastInChrBuf: %d\n",
                           chrBufIndex, lastInChrBuf);
@@ -702,8 +697,10 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                     }
                 }
             } else if (yuv2packedX) {
+#if !NEW_FILTER
                 av_assert1(lumSrcPtr  + vLumFilterSize - 1 < (const int16_t **)lumPixBuf  + vLumBufSize * 2);
                 av_assert1(chrUSrcPtr + vChrFilterSize - 1 < (const int16_t **)chrUPixBuf + vChrBufSize * 2);
+#endif
                 if (c->yuv2packed1 && vLumFilterSize == 1 &&
                     vChrFilterSize <= 2) { // unscaled RGB
                     int chrAlpha = vChrFilterSize == 1 ? 0 : vChrFilter[2 * dstY + 1];
