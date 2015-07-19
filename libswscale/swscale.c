@@ -825,8 +825,6 @@ SwsFunc ff_getSwsFunc(SwsContext *c)
     if (ARCH_X86)
         ff_sws_init_swscale_x86(c);
 
-    ff_init_filters(c);
-
     return swscale;
 }
 

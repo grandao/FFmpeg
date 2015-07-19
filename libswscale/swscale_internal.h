@@ -975,18 +975,18 @@ typedef struct SwsFilterDescriptor
    int (*process)(SwsContext *c, struct SwsFilterDescriptor *desc, int sliceY, int sliceH);
 } SwsFilterDescriptor;
 
-typedef struct ConvertInstance
+typedef struct ColorContext
 {
     uint32_t * pal;
-} ConvertInstance;
+} ColorContext;
 
-typedef struct ScaleInstance
+typedef struct FilterContext
 {
     uint16_t * filter;
     int * filter_pos;
     int filter_size;
     int xInc;
-} ScaleInstance;
+} FilterContext;
 
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH);
 int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int lumY, int lumH, int chrY, int chrH);
