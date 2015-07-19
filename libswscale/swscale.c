@@ -315,8 +315,6 @@ static av_always_inline void hcscale(SwsContext *c, int16_t *dst1,
     if (DEBUG_SWSCALE_BUFFERS)                  \
         av_log(c, AV_LOG_DEBUG, __VA_ARGS__)
 
-
-
 static int swscale(SwsContext *c, const uint8_t *src[],
                    int srcStride[], int srcSliceY,
                    int srcSliceH, uint8_t *dst[], int dstStride[])
@@ -381,7 +379,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     SwsSlice *src_slice = &c->slice[lumStart];
     SwsSlice *dst_slice = &c->slice[c->numSlice-1];
     SwsFilterDescriptor *desc = c->desc;
-    int16_t **line_pool[4];
 
 
     if (!usePal(c->srcFormat)) {
@@ -548,7 +545,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 src[2] + (lastInLumBuf + 1 - srcSliceY) * srcStride[2],
                 src[3] + (lastInLumBuf + 1 - srcSliceY) * srcStride[3],
             };
-
             lumBufIndex++;
             av_assert0(lumBufIndex < 2 * vLumBufSize);
             av_assert0(lastInLumBuf + 1 - srcSliceY < srcSliceH);
@@ -575,12 +571,12 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                 src[2] + (lastInChrBuf + 1 - chrSrcSliceY) * srcStride[2],
                 src[3] + (lastInChrBuf + 1 - chrSrcSliceY) * srcStride[3],
             };
-
             chrBufIndex++;
             av_assert0(chrBufIndex < 2 * vChrBufSize);
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY < (chrSrcSliceH));
             av_assert0(lastInChrBuf + 1 - chrSrcSliceY >= 0);
             // FIXME replace parameters through context struct (some at least)
+
             if (c->needs_hcscale)
                 hcscale(c, chrUPixBuf[chrBufIndex], chrVPixBuf[chrBufIndex],
                         chrDstW, src1, chrSrcW, chrXInc,
@@ -616,7 +612,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
         }
 
         {
-
 #if NEW_FILTER
             const int16_t **lumSrcPtr  = (const int16_t **)(void*) dst_slice->plane[0].line + dst_slice->plane[0].sliceH - vLumFilterSize;
             const int16_t **chrUSrcPtr = (const int16_t **)(void*) dst_slice->plane[1].line + dst_slice->plane[1].sliceH - vChrFilterSize;
@@ -630,9 +625,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
             const int16_t **alpSrcPtr  = (CONFIG_SWSCALE_ALPHA && alpPixBuf) ?
                                          (const int16_t **)(void*) alpPixBuf + lumBufIndex + firstLumSrcY - lastInLumBuf + vLumBufSize : NULL;
 #endif
-
-
-
             int16_t *vLumFilter = c->vLumFilter;
             int16_t *vChrFilter = c->vChrFilter;
 

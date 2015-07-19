@@ -972,7 +972,7 @@ typedef struct SwsFilterDescriptor
     int alpha;
     void * instance;
 
-   int (*process)(SwsContext*, struct SwsFilterDescriptor*, int, int);
+   int (*process)(SwsContext *c, struct SwsFilterDescriptor *desc, int sliceY, int sliceH);
 } SwsFilterDescriptor;
 
 typedef struct ConvertInstance
