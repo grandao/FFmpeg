@@ -951,6 +951,7 @@ typedef struct SwsPlane
     int sliceY;
     int sliceH;
     uint8_t **line;
+    uint8_t ** tmp;
 } SwsPlane;
 
 typedef struct SwsSlice 

@@ -3,7 +3,7 @@
 static void free_lines(SwsSlice *s)
 {
     int i;
-    for (i = 0; i < 4; ++i) {
+    for (i = 0; i < 2; ++i) {
         int n = s->plane[i].available_lines;
         int j;
         for (j = 0; j < n; ++j) {
@@ -12,27 +12,42 @@ static void free_lines(SwsSlice *s)
                s->plane[i].line[j+n] = NULL;
         }
     }
+
+    for (i = 0; i < 4; ++i)
+        memset(s->plane[i].line, 0, sizeof(uint8_t*) * s->plane[i].available_lines * (s->is_ring ? 3 : 1));
     s->should_free_lines = 0;
 }
 
 static int alloc_lines(SwsSlice *s, int width)
 {
     int i;
-    s->should_free_lines = 1;
+    int idx[2] = {3, 2};
 
-    for (i = 0; i < 4; ++i) {
+    s->should_free_lines = 1;
+    s->width = width;
+
+    for (i = 0; i < 2; ++i) {
         int n = s->plane[i].available_lines;
         int j;
+        int ii = idx[i];
+
+        av_assert0(n == s->plane[ii].available_lines);
         for (j = 0; j < n; ++j) {
-            s->plane[i].line[j] = av_malloc(width);
+            // chroma plane line U and V are expected to be contiguous in memory
+            // by mmx vertical scaler code
+            s->plane[i].line[j] = av_malloc(width * 2 + 32);
             if (!s->plane[i].line[j]) {
                 free_lines(s);
                 return AVERROR(ENOMEM);
             }
-            if (s->is_ring)
-               s->plane[i].line[j+n] = s->plane[i].line[j]; 
+            s->plane[ii].line[j] = s->plane[i].line[j] + width + 16; 
+            if (s->is_ring) {
+               s->plane[i].line[j+n] = s->plane[i].line[j];
+               s->plane[ii].line[j+n] = s->plane[ii].line[j];
+            }
         }
     }
+
     return 0;
 }
 
@@ -51,11 +66,12 @@ static int alloc_slice(SwsSlice *s, enum AVPixelFormat fmt, int lumLines, int ch
     s->should_free_lines = 0;
 
     for (i = 0; i < 4; ++i) {
-        int n = size[i] * ( ring == 0 ? 1 : 2);
+        int n = size[i] * ( ring == 0 ? 1 : 3);
         s->plane[i].line = av_mallocz_array(sizeof(uint8_t*), n);
         if (!s->plane[i].line) 
             return AVERROR(ENOMEM);
 
+        s->plane[i].tmp = ring ? s->plane[i].line + size[i] * 2 : NULL;
         s->plane[i].available_lines = size[i];
         s->plane[i].sliceY = 0;
         s->plane[i].sliceH = 0;
@@ -69,8 +85,10 @@ static void free_slice(SwsSlice *s)
     if (s) {
         if (s->should_free_lines)
             free_lines(s);
-        for (i = 0; i < 4; ++i)
+        for (i = 0; i < 4; ++i) {
             av_freep(&s->plane[i].line);
+            s->plane[i].tmp = NULL;
+        }
     }
 }
 
