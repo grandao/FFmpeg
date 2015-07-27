@@ -945,54 +945,73 @@ static inline void fillPlane16(uint8_t *plane, int stride, int width, int height
 
 #define MAX_SLICE_PLANES 4
 
+/// Slice plane
 typedef struct SwsPlane
 {
-    int available_lines;
-    int sliceY;
-    int sliceH;
-    uint8_t **line;
-    uint8_t ** tmp;
+    int available_lines;    ///< max number of lines that can be hold by this plane
+    int sliceY;             ///< index of first line
+    int sliceH;             ///< number of lines
+    uint8_t **line;         ///< line buffer
+    uint8_t **tmp;          ///< Tmp line buffer used by mmx code
 } SwsPlane;
 
+/**
+ * Struct which defines a slice of an image to be scaled or a output for
+ * a scaled slice.
+ * A slice can also be used as intermediate ring buffer for scaling steps.
+ */
 typedef struct SwsSlice 
 {
-    int width;
-    int h_chr_sub_sample;
-    int v_chr_sub_sample;
-    int is_ring;
-    int should_free_lines;
-    enum AVPixelFormat fmt;
-    SwsPlane plane[MAX_SLICE_PLANES];
+    int width;              ///< Slice line width
+    int h_chr_sub_sample;   ///< horizontal chroma subsampling factor
+    int v_chr_sub_sample;   ///< vertical chroma subsampling factor
+    int is_ring;            ///< flag to identify if this slice is a ring buffer
+    int should_free_lines;  ///< flag to identify if there are dynamic allocated lines
+    enum AVPixelFormat fmt; ///< planes pixel format
+    SwsPlane plane[MAX_SLICE_PLANES];   ///< color planes
 } SwsSlice;
 
+/**
+ * Struct which holds all necessary data for processing a slice.
+ * A processing step can be a color conversion or horizontal/vertical scaling.
+ */
 typedef struct SwsFilterDescriptor
 {
-    SwsSlice * src;
-    SwsSlice * dst;
+    SwsSlice *src;  ///< Source slice
+    SwsSlice *dst;  ///< Output slice
 
-    int alpha;
-    void * instance;
+    int alpha;      ///< Flag for processing alpha channel
+    void *instance; ///< Filter instance data
 
-   int (*process)(SwsContext *c, struct SwsFilterDescriptor *desc, int sliceY, int sliceH);
+    /// Function for processing input slice sliceH lines starting from line sliceY
+    int (*process)(SwsContext *c, struct SwsFilterDescriptor *desc, int sliceY, int sliceH);
 } SwsFilterDescriptor;
 
+/// Color conversion instance data
 typedef struct ColorContext
 {
-    uint32_t * pal;
+    uint32_t *pal;
 } ColorContext;
 
+/// Scaler instance data
 typedef struct FilterContext
 {
-    uint16_t * filter;
-    int * filter_pos;
+    uint16_t *filter;
+    int *filter_pos;
     int filter_size;
     int xInc;
 } FilterContext;
 
+// warp input lines in the form (src + width*i + j) to slice format (line[i][j])
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH);
-int ff_init_slice_from_lp(SwsSlice *s, uint8_t ***linesPool, int dstW, int lumY, int lumH, int chrY, int chrH);
+
+// Initialize scaler filter descriptor chain
 int ff_init_filters(SwsContext *c);
+
+// Free all filter data
 int ff_free_filters(SwsContext *c);
+
+// function for applying ring buffer logic into slice s
 int ff_rotate_slice(SwsSlice *s, int lum, int chr);
 
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */
