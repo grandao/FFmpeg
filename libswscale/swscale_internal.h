@@ -1011,7 +1011,12 @@ int ff_init_filters(SwsContext *c);
 // Free all filter data
 int ff_free_filters(SwsContext *c);
 
-// function for applying ring buffer logic into slice s
+/*
+ function for applying ring buffer logic into slice s
+ It checks if the slice can hold more @lum lines, if yes
+ do nothing otherwise remove @lum least used lines.
+ It applyes the same procedure for @chr lines.
+*/
 int ff_rotate_slice(SwsSlice *s, int lum, int chr);
 
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */

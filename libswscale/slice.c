@@ -441,11 +441,6 @@ static int init_desc_no_chr(SwsFilterDescriptor *desc, SwsSlice * src, SwsSlice 
     return 0;
 }
 
-#define FREE_FILTERS_ON_ERROR(err, ctx) if ((err) < 0) {            \
-                                            ff_free_filters((ctx)); \
-                                            return (err);           \
-                                        }
-
 int ff_init_filters(SwsContext * c)
 {
     int i;
@@ -480,17 +475,17 @@ int ff_init_filters(SwsContext * c)
 
 
     res = alloc_slice(&c->slice[0], c->srcFormat, c->srcH, c->chrSrcH, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
-    FREE_FILTERS_ON_ERROR(res, c);
+    if (res < 0) goto cleanup;
     for (i = 1; i < c->numSlice-1; ++i) {
         res = alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
-        FREE_FILTERS_ON_ERROR(res, c);
+        if (res < 0) goto cleanup;
         res = alloc_lines(&c->slice[i], FFALIGN(c->srcW*2+78, 16), c->srcW);
-        FREE_FILTERS_ON_ERROR(res, c);
+        if (res < 0) goto cleanup;
     }
     res = alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample, 1);
-    FREE_FILTERS_ON_ERROR(res, c);
+    if (res < 0) goto cleanup;
     res = alloc_lines(&c->slice[i], dst_stride, c->dstW);
-    FREE_FILTERS_ON_ERROR(res, c);
+    if (res < 0) goto cleanup;
 
     fill_ones(&c->slice[i], dst_stride>>1, c->dstBpc == 16);
 
@@ -529,6 +524,10 @@ int ff_init_filters(SwsContext * c)
     }
 
     return 0;
+
+cleanup:
+    ff_free_filters(c);
+    return res;
 }
 
 int ff_free_filters(SwsContext *c)
