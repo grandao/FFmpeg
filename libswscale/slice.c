@@ -18,7 +18,11 @@ static void free_lines(SwsSlice *s)
     s->should_free_lines = 0;
 }
 
-static int alloc_lines(SwsSlice *s, int width)
+/*
+ slice lines contains extra bytes for vetorial code thus @size
+ is the allocated memory size and @width is the number of pixels 
+*/
+static int alloc_lines(SwsSlice *s, int size, int width)
 {
     int i;
     int idx[2] = {3, 2};
@@ -35,12 +39,12 @@ static int alloc_lines(SwsSlice *s, int width)
         for (j = 0; j < n; ++j) {
             // chroma plane line U and V are expected to be contiguous in memory
             // by mmx vertical scaler code
-            s->plane[i].line[j] = av_malloc(width * 2 + 32);
+            s->plane[i].line[j] = av_malloc(size * 2 + 32);
             if (!s->plane[i].line[j]) {
                 free_lines(s);
                 return AVERROR(ENOMEM);
             }
-            s->plane[ii].line[j] = s->plane[i].line[j] + width + 16; 
+            s->plane[ii].line[j] = s->plane[i].line[j] + size + 16; 
             if (s->is_ring) {
                s->plane[i].line[j+n] = s->plane[i].line[j];
                s->plane[ii].line[j+n] = s->plane[ii].line[j];
@@ -309,7 +313,6 @@ static int chr_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
     int src_pos2 = sliceY - desc->src->plane[2].sliceY;
     int dst_pos2 = sliceY - desc->dst->plane[2].sliceY;
 
-
     int i;
     for (i = 0; i < sliceH; ++i) {
         if (c->hcscale_fast) {
@@ -407,7 +410,8 @@ static void fill_ones(SwsSlice *s, int n, int is16bit)
         for (j = 0; j < size; ++j) {
             int k;
             int end = is16bit ? n>>1: n;
-      
+            // fill also one extra element
+            end += 1;
             if (is16bit)
                 for (k = 0; k < end; ++k)
                     ((int32_t*)(s->plane[i].line[j]))[k] = 1<<18;
@@ -480,12 +484,12 @@ int ff_init_filters(SwsContext * c)
     for (i = 1; i < c->numSlice-1; ++i) {
         res = alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
         FREE_FILTERS_ON_ERROR(res, c);
-        res = alloc_lines(&c->slice[i], FFALIGN(c->srcW*2+78, 16));
+        res = alloc_lines(&c->slice[i], FFALIGN(c->srcW*2+78, 16), c->srcW);
         FREE_FILTERS_ON_ERROR(res, c);
     }
     res = alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample, 1);
     FREE_FILTERS_ON_ERROR(res, c);
-    res = alloc_lines(&c->slice[i], dst_stride);
+    res = alloc_lines(&c->slice[i], dst_stride, c->dstW);
     FREE_FILTERS_ON_ERROR(res, c);
 
     fill_ones(&c->slice[i], dst_stride>>1, c->dstBpc == 16);
