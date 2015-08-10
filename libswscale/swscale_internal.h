@@ -330,7 +330,7 @@ typedef struct SwsContext {
     uint16_t *inv_gamma;
 
     int numDesc;
-    int descIndex[2];
+    int descIndex[3];
     int numSlice;
     struct SwsSlice *slice;
     struct SwsFilterDescriptor *desc;
@@ -1000,6 +1000,7 @@ typedef struct FilterContext
     int *filter_pos;
     int filter_size;
     int xInc;
+    int isMMX;
 } FilterContext;
 
 // warp input lines in the form (src + width*i + j) to slice format (line[i][j])
@@ -1019,4 +1020,5 @@ int ff_free_filters(SwsContext *c);
 */
 int ff_rotate_slice(SwsSlice *s, int lum, int chr);
 
+void ff_set_desc_mmx(SwsContext *c, int enabled);
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */

@@ -168,6 +168,7 @@ int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int src
 }
 
 #include "hscale.c"
+#include "vscale.c"
 
 int ff_init_filters(SwsContext * c)
 {
@@ -183,16 +184,19 @@ int ff_init_filters(SwsContext * c)
     uint32_t * pal = usePal(c->srcFormat) ? c->pal_yuv : (uint32_t*)c->input_rgb2yuv_table;
     int res = 0;
 
+    int vdescs = isPlanarYUV(c->dstFormat) && !isGray(c->dstFormat) ? 2 : 1;
+
     if (c->dstBpc == 16)
         dst_stride <<= 1;
 
     num_ydesc = need_lum_conv ? 2 : 1;
     num_cdesc = need_chr_conv ? 2 : 1;
 
-    c->numSlice = FFMAX(num_ydesc, num_cdesc) + 1;
-    c->numDesc = num_ydesc + num_cdesc;
+    c->numSlice = FFMAX(num_ydesc, num_cdesc) + 2;
+    c->numDesc = num_ydesc + num_cdesc + vdescs;
     c->descIndex[0] = num_ydesc;
     c->descIndex[1] = num_ydesc + num_cdesc;
+    c->descIndex[2] = num_ydesc + num_cdesc + vdescs;
 
     
 
@@ -204,18 +208,25 @@ int ff_init_filters(SwsContext * c)
 
     res = alloc_slice(&c->slice[0], c->srcFormat, c->srcH, c->chrSrcH, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
     if (res < 0) goto cleanup;
-    for (i = 1; i < c->numSlice-1; ++i) {
+    for (i = 1; i < c->numSlice-2; ++i) {
         res = alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrSrcHSubSample, c->chrSrcVSubSample, 0);
         if (res < 0) goto cleanup;
         res = alloc_lines(&c->slice[i], FFALIGN(c->srcW*2+78, 16), c->srcW);
         if (res < 0) goto cleanup;
     }
+    // horizontal scaler output
     res = alloc_slice(&c->slice[i], c->srcFormat, c->vLumFilterSize, c->vChrFilterSize, c->chrDstHSubSample, c->chrDstVSubSample, 1);
     if (res < 0) goto cleanup;
     res = alloc_lines(&c->slice[i], dst_stride, c->dstW);
     if (res < 0) goto cleanup;
-
     fill_ones(&c->slice[i], dst_stride>>1, c->dstBpc == 16);
+
+    // vertical scaler output
+    ++i;
+    res = alloc_slice(&c->slice[i], c->dstFormat, c->dstH, c->chrDstH, c->chrDstHSubSample, c->chrDstVSubSample, 0);
+    if (res < 0) goto cleanup;
+
+    
 
     index = 0;
     srcIdx = 0;
@@ -249,6 +260,12 @@ int ff_init_filters(SwsContext * c)
             init_desc_chscale(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx], c->hChrFilter, c->hChrFilterPos, c->hChrFilterSize, c->chrXInc);
         else
             init_desc_no_chr(&c->desc[index], &c->slice[srcIdx], &c->slice[dstIdx]);
+    }
+    ++index;
+    {
+        srcIdx = c->numSlice - 2;
+        dstIdx = c->numSlice - 1;
+        ff_init_vscale(c, c->desc + index, c->slice + srcIdx, c->slice + dstIdx);
     }
 
     return 0;
