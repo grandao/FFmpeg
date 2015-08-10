@@ -1,52 +1,3 @@
-/*
-static int lum_p1_vscale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
-{
-    int dstW = desc->dst->width;
-    int sp = desc->src->plane[0].sliceH - 1;
-    uint8_t *src = desc->src->plane[0].line[sp];
-    
-    int dp = sliceY - desc->dst->plane[0].sliceY;
-    uint8_t *dst = desc->dst->plane[0].line[dp];
-    
-    c->yuv2plane1(src, dst, dstW, c->lumDither8, 0);
-    if (desc->alpha) {
-        int sp = desc->src->plane[3].sliceH - 1;
-        uint8_t *src = desc->src->plane[3].line[sp];
-        
-        int dp = sliceY - desc->dst->plane[3].sliceY;
-        uint8_t *dst = desc->dst->plane[3].line[dp];
-        c->yuv2plane1(src, dst, dstW, c->lumDither8, 0);
-    }
-
-    return 1;
-}
-
-static int chr_p1_vscale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
-{
-    const int chrSkipMask = (1 << desc->dst->v_chr_sub_sample) - 1;
-    if (sliceY & chrSkipMask)
-        return 0;
-    else {
-        int dstW = desc->dst->width;
-        int sp1 = desc->src->plane[1].sliceH - 1;
-        int sp2 = desc->src->plane[2].sliceH - 1;
-        uint8_t *src1 = desc->src->plane[1].line[sp1];
-        uint8_t *src2 = desc->src->plane[2].line[sp2];
-        
-        int dp1 = sliceY - desc->dst->plane[1].sliceY;
-        int dp2 = sliceY - desc->dst->plane[2].sliceY;
-        uint8_t *dst1 = desc->dst->plane[1].line[dp1];
-        uint8_t *dst2 = desc->dst->plane[2].line[dp2];
-        
-        c->yuv2plane1(src1, dst1, dstW, c->chrDither8, 0);
-        c->yuv2plane1(src2, dst2, dstW, c->chrDither8, 3);
-
-
-        return 1;
-    }
-}
-*/
-
 static int lum_planar_vscale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int sliceH)
 {
     FilterContext *inst = desc->instance;
@@ -68,6 +19,7 @@ static int lum_planar_vscale(SwsContext *c, SwsFilterDescriptor *desc, int slice
         int dp = sliceY - desc->dst->plane[3].sliceY;
         uint8_t **src = desc->src->plane[3].line + sp;
         uint8_t **dst = desc->dst->plane[3].line + dp;
+        uint16_t *filter = (inst->isMMX ? (uint16_t *)c->alpMmxFilter : inst->filter) + sliceY * inst->filter_size;
 
         if (inst->filter_size == 1)
             c->yuv2plane1((const int16_t*)src[0], dst[0], dstW, c->lumDither8, 0);
@@ -96,7 +48,7 @@ static int chr_planar_vscale(SwsContext *c, SwsFilterDescriptor *desc, int slice
         uint8_t **src2 = desc->src->plane[2].line + sp2;
         uint8_t **dst1 = desc->dst->plane[1].line + dp1;
         uint8_t **dst2 = desc->dst->plane[2].line + dp2;
-        uint16_t *filter = inst->filter + sliceY * inst->filter_size;
+        uint16_t *filter = inst->filter + (inst->isMMX ? 0 : sliceY * inst->filter_size);
 
         if (c->yuv2nv12cX) {
             c->yuv2nv12cX(c, filter, inst->filter_size, (const int16_t**)src1, (const int16_t**)src2, dst1[0], dstW);
@@ -196,13 +148,18 @@ static int any_vscale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int 
 
 void ff_set_desc_mmx(SwsContext *c, int enabled)
 {
+    int idx = c->numDesc-1;
     if (isPlanarYUV(c->dstFormat) || (isGray(c->dstFormat) && !isALPHA(c->dstFormat))) {
-        ((FilterContext *)c->desc[c->numDesc-1].instance)->isMMX = enabled;
-        if (!isGray(c->dstFormat))
-            ((FilterContext *)c->desc[c->numDesc-2].instance)->isMMX = enabled;
+        if (!isGray(c->dstFormat)) {
+            ((FilterContext *)c->desc[idx].instance)->isMMX = enabled;
+            ((FilterContext *)c->desc[idx].instance)->filter = enabled ? c->chrMmxFilter : c->vChrFilter;
+            --idx;
+        }
+        ((FilterContext *)c->desc[idx].instance)->isMMX = enabled;
+        ((FilterContext *)c->desc[idx].instance)->filter = enabled ? c->lumMmxFilter : c->vLumFilter;
     } else {
-        ((FilterContext *)c->desc[c->numDesc-1].instance)[0].isMMX = enabled;
-        ((FilterContext *)c->desc[c->numDesc-1].instance)[1].isMMX = enabled;
+        ((FilterContext *)c->desc[idx].instance)[0].isMMX = enabled;
+        ((FilterContext *)c->desc[idx].instance)[1].isMMX = enabled;
     }
 }
 
@@ -225,7 +182,7 @@ int ff_init_vscale(SwsContext *c, SwsFilterDescriptor *desc, SwsSlice *src, SwsS
         desc[0].dst = dst;
         desc[0].alpha = c->alpPixBuf != 0;
 
-        lumCtx->filter = c->vLumFilter;
+        lumCtx->filter = c->use_mmx_vfilter ? c->lumMmxFilter : c->vLumFilter;
         lumCtx->filter_size = c->vLumFilterSize;
         lumCtx->isMMX = c->use_mmx_vfilter;
 
@@ -233,7 +190,7 @@ int ff_init_vscale(SwsContext *c, SwsFilterDescriptor *desc, SwsSlice *src, SwsS
             chrCtx = av_mallocz(sizeof(FilterContext));
             if (!chrCtx)
                 return AVERROR(ENOMEM);
-            chrCtx->filter = c->vChrFilter;
+            chrCtx->filter = c->use_mmx_vfilter ? c->chrMmxFilter : c->vChrFilter;
             chrCtx->filter_size = c->vChrFilterSize;
             chrCtx->isMMX = c->use_mmx_vfilter;
             desc[1].process = chr_planar_vscale;
