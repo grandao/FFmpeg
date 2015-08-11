@@ -617,18 +617,22 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                                      &yuv2packed1, &yuv2packed2, &yuv2packedX, &yuv2anyX);
             use_mmx_vfilter= 0;
             ff_set_desc_mmx(c, use_mmx_vfilter);
+            ff_init_pfn(c, yuv2plane1, yuv2planeX, yuv2nv12cX,
+                           yuv2packed1, yuv2packed2, yuv2packedX, yuv2anyX);
         }
 
         {
 #if NEW_FILTER
             for (i = vStart; i < vEnd; ++i)
                 desc[i].process(c, &desc[i], dstY, 1);
-//#else
+
+#else
             const int16_t **lumSrcPtr  = (const int16_t **)(void*) lumPixBuf  + lumBufIndex + firstLumSrcY - lastInLumBuf + vLumBufSize;
             const int16_t **chrUSrcPtr = (const int16_t **)(void*) chrUPixBuf + chrBufIndex + firstChrSrcY - lastInChrBuf + vChrBufSize;
             const int16_t **chrVSrcPtr = (const int16_t **)(void*) chrVPixBuf + chrBufIndex + firstChrSrcY - lastInChrBuf + vChrBufSize;
             const int16_t **alpSrcPtr  = (CONFIG_SWSCALE_ALPHA && alpPixBuf) ?
                                          (const int16_t **)(void*) alpPixBuf + lumBufIndex + firstLumSrcY - lastInLumBuf + vLumBufSize : NULL;
+
 
             int16_t *vLumFilter = c->vLumFilter;
             int16_t *vChrFilter = c->vChrFilter;
@@ -661,7 +665,6 @@ static int swscale(SwsContext *c, const uint8_t *src[],
                                lumSrcPtr, dest[0],
                                dstW, c->lumDither8, 0);
                 }
-
                 if (!((dstY & chrSkipMask) || isGray(dstFormat))) {
                     if (yuv2nv12cX) {
                         yuv2nv12cX(c, vChrFilter,

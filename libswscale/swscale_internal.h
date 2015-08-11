@@ -1003,6 +1003,14 @@ typedef struct FilterContext
     int isMMX;
 } FilterContext;
 
+typedef struct VScalerContext
+{
+    uint16_t *filter[2];
+    int filter_size;
+    int isMMX;
+    void *pfn;
+} VScalerContext;
+
 // warp input lines in the form (src + width*i + j) to slice format (line[i][j])
 int ff_init_slice_from_src(SwsSlice * s, uint8_t *src[4], int stride[4], int srcW, int lumY, int lumH, int chrY, int chrH);
 
@@ -1021,4 +1029,8 @@ int ff_free_filters(SwsContext *c);
 int ff_rotate_slice(SwsSlice *s, int lum, int chr);
 
 void ff_set_desc_mmx(SwsContext *c, int enabled);
+
+void ff_init_pfn(SwsContext *c, yuv2planar1_fn yuv2plane1, yuv2planarX_fn yuv2planeX,
+    yuv2interleavedX_fn yuv2nv12cX, yuv2packed1_fn yuv2packed1, yuv2packed2_fn yuv2packed2,
+    yuv2packedX_fn yuv2packedX, yuv2anyX_fn yuv2anyX);
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */
